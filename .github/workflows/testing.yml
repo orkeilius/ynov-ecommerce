@@ -12,7 +12,7 @@ jobs:
             node-version: 20
         - run: npm ci
         - run: npm i -g jest
-        - run: jest -b "test/**/*.test.js"
+        - run: jest -b "test/**/*.test.js" --collectCoverage
 
     test-integration:
       runs-on: ubuntu-latest
