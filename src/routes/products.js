@@ -1,25 +1,17 @@
 const express = require('express');
 const router = express.Router();
-const products = require('../data/products');
+const db = require('../db');
 
 const FEATURE_V2_PRODUCTS = process.env.FEATURE_V2_PRODUCTS === 'true';
 
-function getProductsV1() {
-  return products;
-}
-
-function getProductsV2() {
-  return products.map(p => ({
-    ...p,
-    available: p.stock > 0,
-    priceFormatted: `€${p.price.toFixed(2)}`,
-  }));
+function formatV2(p) {
+  return { ...p, available: p.stock > 0, priceFormatted: `€${p.price.toFixed(2)}` };
 }
 
 // GET /api/products
 router.get('/', (req, res) => {
-  const data = FEATURE_V2_PRODUCTS ? getProductsV2() : getProductsV1();
-  res.json(data);
+  const rows = db.prepare('SELECT * FROM products').all();
+  res.json(FEATURE_V2_PRODUCTS ? rows.map(formatV2) : rows);
 });
 
 // GET /api/products/:id
@@ -28,11 +20,11 @@ router.get('/:id', (req, res) => {
   if (isNaN(id)) {
     return res.status(400).json({ error: 'Product id must be a number' });
   }
-  const product = products.find(p => p.id === id);
+  const product = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
   if (!product) {
     return res.status(404).json({ error: 'Product not found' });
   }
-  res.json(product);
+  res.json(FEATURE_V2_PRODUCTS ? formatV2(product) : product);
 });
 
 // POST /api/products
@@ -41,14 +33,10 @@ router.post('/', (req, res) => {
   if (!name || price === undefined) {
     return res.status(400).json({ error: 'name and price are required' });
   }
-  const newProduct = {
-    id: products.length + 1,
-    name,
-    price,
-    stock: stock ?? 0,
-    category: category ?? 'misc',
-  };
-  products.push(newProduct);
+  const result = db.prepare(
+    'INSERT INTO products (name, price, stock, category) VALUES (?, ?, ?, ?)'
+  ).run(name, price, stock ?? 0, category ?? 'misc');
+  const newProduct = db.prepare('SELECT * FROM products WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(newProduct);
 });
 
