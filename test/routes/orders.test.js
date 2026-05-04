@@ -1,5 +1,28 @@
 const request = require('supertest');
 const express = require('express');
+
+jest.mock('../../src/db', () => ({
+    all: jest.fn((sql, params, callback) => {
+        // Mock product prices
+        const mockProducts = [
+            { id: 1, price: 1299.99 },
+            { id: 2, price: 39.99 },
+            { id: 3, price: 149.99 }
+        ];
+        // Filter products by the provided IDs
+        const productIds = params || [];
+        const products = mockProducts.filter(p => productIds.includes(p.id));
+        callback(null, products);
+    }),
+    get: jest.fn((sql, params, callback) => {
+        callback(null, { id: 1, userId: 1, productIds: '[1]', total: 1299.99, status: 'pending' });
+    }),
+    run: jest.fn(function(sql, params, callback) {
+        const context = { lastID: 1, changes: 1 };
+        callback.call(context, null);
+    })
+}));
+
 const routes = require('../../src/routes/orders');
 
 describe('/api/orders', () => {
