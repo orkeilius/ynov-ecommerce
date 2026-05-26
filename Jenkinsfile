@@ -14,11 +14,11 @@ pipeline {
     stage('Lint')    { steps { sh 'npm run lint' } }
     stage('Test') {
       steps {
-        sh 'npm test -- --coverage'
+        sh 'npm test -- --coverage --reporters jest-junit'
       }
       post {
         always {
-          junit 'reports/junit.xml'
+          junit 'junit.xml'
           archiveArtifacts 'coverage/**'
         }
       }
