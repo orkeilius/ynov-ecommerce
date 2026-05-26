@@ -2,31 +2,36 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
-function getOrderWithItems(id) {
-  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
-  if (!order) return null;
-  const items = db.prepare('SELECT productId FROM order_items WHERE orderId = ?').all(id);
-  return { ...order, productIds: items.map(i => i.productId) };
-}
-
 // GET /api/orders
 router.get('/', (req, res) => {
-  const orders = db.prepare('SELECT * FROM orders').all();
-  const result = orders.map(o => {
-    const items = db.prepare('SELECT productId FROM order_items WHERE orderId = ?').all(o.id);
-    return { ...o, productIds: items.map(i => i.productId) };
+  db.all('SELECT * FROM orders', (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: 'Database error' });
+    }
+    const orders = rows.map(o => ({
+      ...o,
+      productIds: JSON.parse(o.productIds),
+    }));
+    res.json(orders);
   });
-  res.json(result);
 });
 
 // GET /api/orders/:id
 router.get('/:id', (req, res) => {
   const id = parseInt(req.params.id);
-  const order = getOrderWithItems(id);
-  if (!order) {
-    return res.status(404).json({ error: 'Order not found' });
+  if (isNaN(id)) {
+    return res.status(400).json({ error: 'Order id must be a number' });
   }
-  res.json(order);
+  db.get('SELECT * FROM orders WHERE id = ?', [id], (err, row) => {
+    if (err) {
+      return res.status(500).json({ error: 'Database error' });
+    }
+    if (!row) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    row.productIds = JSON.parse(row.productIds);
+    res.json(row);
+  });
 });
 
 // POST /api/orders
@@ -35,42 +40,56 @@ router.post('/', (req, res) => {
   if (!userId || !productIds || !Array.isArray(productIds)) {
     return res.status(400).json({ error: 'userId and productIds[] are required' });
   }
-
-  const total = productIds.reduce((sum, pid) => {
-    const product = db.prepare('SELECT price FROM products WHERE id = ?').get(pid);
-    return sum + (product ? product.price : 0);
-  }, 0);
-
-  const createdAt = new Date().toISOString().split('T')[0];
-
-  const create = db.transaction(() => {
-    const result = db.prepare(
-      'INSERT INTO orders (userId, total, status, createdAt) VALUES (?, ?, ?, ?)'
-    ).run(userId, total, 'pending', createdAt);
-    const orderId = result.lastInsertRowid;
-    const insertItem = db.prepare('INSERT INTO order_items (orderId, productId) VALUES (?, ?)');
-    for (const pid of productIds) insertItem.run(orderId, pid);
-    return orderId;
+  // Calculate total
+  const placeholders = productIds.map(() => '?').join(',');
+  db.all(`SELECT price FROM products WHERE id IN (${placeholders})`, productIds, (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: 'Database error' });
+    }
+    const total = rows.reduce((sum, p) => sum + p.price, 0);
+    const createdAt = new Date().toISOString().split('T')[0];
+    db.run('INSERT INTO orders (userId, productIds, total, status, createdAt) VALUES (?, ?, ?, ?, ?)', [userId, JSON.stringify(productIds), total, 'pending', createdAt], function(err) {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.status(201).json({
+        id: this.lastID,
+        userId,
+        productIds,
+        total,
+        status: 'pending',
+        createdAt,
+      });
+    });
   });
-
-  const orderId = create();
-  res.status(201).json(getOrderWithItems(orderId));
 });
 
 // PATCH /api/orders/:id/status
 router.patch('/:id/status', (req, res) => {
   const id = parseInt(req.params.id);
-  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
-  if (!order) {
-    return res.status(404).json({ error: 'Order not found' });
+  if (isNaN(id)) {
+    return res.status(400).json({ error: 'Order id must be a number' });
   }
   const { status } = req.body;
   const validStatuses = ['pending', 'shipped', 'delivered', 'cancelled'];
   if (!validStatuses.includes(status)) {
     return res.status(400).json({ error: `status must be one of: ${validStatuses.join(', ')}` });
   }
-  db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, id);
-  res.json(getOrderWithItems(id));
+  db.run('UPDATE orders SET status = ? WHERE id = ?', [status, id], function(err) {
+    if (err) {
+      return res.status(500).json({ error: 'Database error' });
+    }
+    if (this.changes === 0) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    db.get('SELECT * FROM orders WHERE id = ?', [id], (err, row) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      row.productIds = JSON.parse(row.productIds);
+      res.json(row);
+    });
+  });
 });
 
 module.exports = router;

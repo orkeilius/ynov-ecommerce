@@ -2,19 +2,33 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+const FEATURE_V2_E = process.env.FEATURE_V2_E === 'true';
+
 // GET /api/users
 router.get('/', (req, res) => {
-  res.json(db.prepare('SELECT * FROM users').all());
+  db.all('SELECT * FROM users', (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: 'Database error' });
+    }
+    res.json(rows);
+  });
 });
 
 // GET /api/users/:id
 router.get('/:id', (req, res) => {
   const id = parseInt(req.params.id);
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
-  if (!user) {
-    return res.status(404).json({ error: 'User not found' });
+  if (isNaN(id)) {
+    return res.status(400).json({ error: 'User id must be a number' });
   }
-  res.json(user);
+  db.get('SELECT * FROM users WHERE id = ?', [id], (err, row) => {
+    if (err) {
+      return res.status(500).json({ error: 'Database error' });
+    }
+    if (!row) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(row);
+  });
 });
 
 // POST /api/users
@@ -23,18 +37,17 @@ router.post('/', (req, res) => {
   if (!name || !email) {
     return res.status(400).json({ error: 'name and email are required' });
   }
-  try {
-    const result = db.prepare(
-      'INSERT INTO users (name, email, role) VALUES (?, ?, ?)'
-    ).run(name, email, 'customer');
-    const newUser = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
-    res.status(201).json(newUser);
-  } catch (err) {
-    if (err.message.includes('UNIQUE')) {
-      return res.status(409).json({ error: 'Email already in use' });
+  db.run('INSERT INTO users (name, email, role) VALUES (?, ?, ?)', [name, email, 'customer'], function(err) {
+    if (err) {
+      return res.status(500).json({ error: 'Database error' });
     }
-    throw err;
-  }
+    res.status(FEATURE_V2_E ? 201 : 202).json({
+      id: this.lastID,
+      name,
+      email,
+      role: 'customer',
+    });
+  });
 });
 
 module.exports = router;
