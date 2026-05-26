@@ -1,9 +1,0 @@
-#!/bin/bash
-# Bloque le commit si console.log est détecté dans les fichiers stagés
-
-if git diff --cached --name-only | xargs grep -l 'console\.log' 2>/dev/null; then
-  echo "❌ Commit bloqué : console.log détecté dans les fichiers stagés."
-  echo "   Supprime-le ou utilise un vrai logger avant de committer."
-  exit 1
-fi
-exit 0

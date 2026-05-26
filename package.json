@@ -7,17 +7,29 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "lint": "eslint src/",
+    "test": "jest --runInBand",
+    "test:unit": "jest --runInBand tests/unit",
+    "test:integration": "jest --runInBand tests/integration",
+    "test:coverage": "jest --runInBand --coverage",
     "prepare": "husky"
   },
   "keywords": [],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "sqlite3": "^6.0.1"
   },
   "devDependencies": {
     "@commitlint/cli": "^18.4.3",
     "@commitlint/config-conventional": "^18.4.3",
-    "husky": "^9.0.0"
+    "@eslint/js": "^9.39.4",
+    "eslint": "^9.39.4",
+    "globals": "^17.6.0",
+    "husky": "^9.0.0",
+    "jest": "^30.3.0",
+    "supertest": "^7.2.2",
+    "chai": "^6.2.2",
+    "chai-http": "^5.1.2"
   }
 }
